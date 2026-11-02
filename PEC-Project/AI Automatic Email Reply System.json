@@ -1,0 +1,522 @@
+{
+  "name": "AI Automatic Email Reply System",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "simple": false,
+        "filters": {
+          "includeSpamTrash": false,
+          "includeDrafts": false,
+          "q": "in:inbox -from:me -in:spam -category:social",
+          "readStatus": "unread"
+        },
+        "options": {}
+      },
+      "id": "600c9cce-63e7-46a5-af61-6c5946662ae1",
+      "name": "New Email Received",
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        0,
+        0
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "8KkGi6zbnBaTkHYw",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "removeItemsSeenInPreviousExecutions",
+        "dedupeValue": "={{ $json.id }}",
+        "options": {
+          "scope": "node",
+          "historySize": 10000
+        }
+      },
+      "id": "8152ba6d-eab5-4fce-9d87-e5ec21a98479",
+      "name": "Skip Already Processed",
+      "type": "n8n-nodes-base.removeDuplicates",
+      "typeVersion": 2,
+      "position": [
+        272,
+        224
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "safe-to-reply",
+              "leftValue": "={{ (() => { const from = ($json.from?.value?.[0]?.address || \"\").toLowerCase(); const labels = $json.labelIds || []; const body = ($json.text || \"\").trim(); const content = (($json.subject || \"\") + \" \" + body.slice(0, 3000)).toLowerCase(); const automated = /(no-?reply|do-?not-?reply|mailer-daemon|postmaster|notifications?@|alerts?@|bounce)/.test(from); const sensitive = /(\\botp\\b|one[- ]time (password|code|pin)|verification code|security code|passcode|password reset|reset your password|forgot password|\\bbank|account statement|transaction|debited|credited|credit card|debit card|\\bupi\\b|net ?banking|login attempt|sign[- ]in attempt|security alert|confidential|out of office|automatic reply|auto-?reply|delivery status notification|undeliverable)/.test(content); const blockedLabel = [\"SENT\", \"DRAFT\", \"SPAM\", \"TRASH\"].some(l => labels.includes(l)); return from && body && !automated && !sensitive && !blockedLabel ? \"yes\" : \"no\"; })() }}",
+              "rightValue": "yes",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "c80e0a76-8326-4597-9f44-d560ac26b26c",
+      "name": "Is Safe To Reply",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        496,
+        224
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "senderName",
+              "name": "senderName",
+              "type": "string",
+              "value": "={{ $json.from?.value?.[0]?.name || \"\" }}"
+            },
+            {
+              "id": "senderEmail",
+              "name": "senderEmail",
+              "type": "string",
+              "value": "={{ $json.from?.value?.[0]?.address }}"
+            },
+            {
+              "id": "subject",
+              "name": "subject",
+              "type": "string",
+              "value": "={{ $json.subject || \"(no subject)\" }}"
+            },
+            {
+              "id": "body",
+              "name": "body",
+              "type": "string",
+              "value": "={{ ($json.text || \"\").trim().slice(0, 6000) }}"
+            },
+            {
+              "id": "messageId",
+              "name": "messageId",
+              "type": "string",
+              "value": "={{ $json.id }}"
+            },
+            {
+              "id": "threadId",
+              "name": "threadId",
+              "type": "string",
+              "value": "={{ $json.threadId }}"
+            },
+            {
+              "id": "receivedAt",
+              "name": "receivedAt",
+              "type": "string",
+              "value": "={{ $now.setZone(\"Asia/Kolkata\").toFormat(\"yyyy-MM-dd HH:mm:ss\") }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "f077cd26-852d-41fa-9e9d-7b940f70949d",
+      "name": "Extract Email Details",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        720,
+        128
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "30f0bcc8-7e3f-4f6c-af58-2eb3057f58ff",
+      "name": "Ignored Email",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        720,
+        320
+      ],
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "gpt-6.1-terra"
+        },
+        "responses": {
+          "values": [
+            {
+              "content": "=Write a reply to this email.\n\nSender name: {{ $json.senderName || \"Unknown\" }}\nSender email: {{ $json.senderEmail }}\nSubject: {{ $json.subject }}\n\nEmail body:\n{{ $json.body }}"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {
+          "instructions": "You are my professional AI email assistant.\n\nMy communication preferences:\n\n1. I am currently not accepting promotional offers.\n2. I am currently not accepting collaborations.\n3. I am open to professional meetings and project discussions.\n4. Always maintain a polite, respectful and professional tone.\n5. Keep replies short, clear and meaningful.\n6. Understand the sender's email before generating a response.\n7. Never accept offers, agree to meetings or make commitments on my behalf.\n8. For irrelevant emails, generate an appropriate polite response.\n9. Return only the email reply without additional explanations.\n10. Do not invent personal information.\n\nWrite plain text only (no markdown, no subject line). Address the sender by name when it is known. Do not add placeholders like [Your Name].",
+          "maxTokens": 2000,
+          "reasoning": {
+            "reasoningOptions": {
+              "effort": "low",
+              "summary": "none"
+            }
+          },
+          "store": false
+        }
+      },
+      "id": "1b1e2864-7ab0-4ab3-b95d-bcaee45e273c",
+      "name": "Generate Professional Reply",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.3,
+      "position": [
+        800,
+        352
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "openAiApi": {
+          "id": null,
+          "name": "Gateway credits",
+          "__aiGatewayManaged": true
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {},
+      "id": "596c40a4-8bef-4217-8fa7-48ad8bfef297",
+      "name": "AI Failed - Reply Skipped",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1376,
+        448
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "reply-not-empty",
+              "leftValue": "={{ String($json.output?.[0]?.content?.[0]?.text || \"\").trim().length > 0 ? \"yes\" : \"no\" }}",
+              "rightValue": "yes",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "00ff12c0-f10f-4208-bb12-6756cacf9ae1",
+      "name": "Has Valid AI Reply",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1152,
+        272
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "reply",
+        "messageId": "={{ $('Extract Email Details').item.json.messageId }}",
+        "emailType": "text",
+        "message": "={{ $('Generate Professional Reply').item.json.output[0].content[0].text.trim() }}",
+        "options": {
+          "appendAttribution": false,
+          "replyToSenderOnly": true
+        }
+      },
+      "id": "9e17487a-a12c-4a56-b923-6bcf335db526",
+      "name": "Reply to Sender",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1376,
+        224
+      ],
+      "webhookId": "c0115272-b27f-4f20-a1b8-767225751e10",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "8KkGi6zbnBaTkHYw",
+          "name": "Gmail account"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {},
+      "id": "cf4ab233-c100-4cc8-83e5-b98b6b98ede5",
+      "name": "Send Failed",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1600,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "markAsRead",
+        "messageId": "={{ $('Extract Email Details').item.json.messageId }}"
+      },
+      "id": "27d76c65-1342-4079-b906-7afd8725b81d",
+      "name": "Mark Original as Read",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1600,
+        128
+      ],
+      "webhookId": "e1bbfad7-6e70-4553-a4f8-d254dbda4c06",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "8KkGi6zbnBaTkHYw",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "status",
+              "name": "status",
+              "type": "string",
+              "value": "Reply sent"
+            },
+            {
+              "id": "to",
+              "name": "repliedTo",
+              "type": "string",
+              "value": "={{ $('Extract Email Details').item.json.senderEmail }}"
+            },
+            {
+              "id": "subject",
+              "name": "subject",
+              "type": "string",
+              "value": "={{ $('Extract Email Details').item.json.subject }}"
+            },
+            {
+              "id": "threadId",
+              "name": "threadId",
+              "type": "string",
+              "value": "={{ $('Extract Email Details').item.json.threadId }}"
+            },
+            {
+              "id": "sentAt",
+              "name": "sentAt",
+              "type": "string",
+              "value": "={{ $now.setZone(\"Asia/Kolkata\").toFormat(\"yyyy-MM-dd HH:mm:ss\") }} IST"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "2ae02112-e22f-4cf9-86a0-e3f15b6c20c4",
+      "name": "Email Successfully Sent",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        1824,
+        128
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "New Email Received": {
+      "main": [
+        [
+          {
+            "node": "Skip Already Processed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Skip Already Processed": {
+      "main": [
+        [
+          {
+            "node": "Is Safe To Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Safe To Reply": {
+      "main": [
+        [
+          {
+            "node": "Extract Email Details",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ignored Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Email Details": {
+      "main": [
+        [
+          {
+            "node": "Generate Professional Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Professional Reply": {
+      "main": [
+        [
+          {
+            "node": "Has Valid AI Reply",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "AI Failed - Reply Skipped",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Valid AI Reply": {
+      "main": [
+        [
+          {
+            "node": "Reply to Sender",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "AI Failed - Reply Skipped",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reply to Sender": {
+      "main": [
+        [
+          {
+            "node": "Mark Original as Read",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Original as Read": {
+      "main": [
+        [
+          {
+            "node": "Email Successfully Sent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "timezone": "Asia/Kolkata",
+    "timeSavedMode": "fixed",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "versionId": "40e101fd-c90e-41f0-88fb-56f63159cc2a",
+  "meta": {
+    "instanceId": "d697fa1f749621ca167086010f3d1a6019ba66e3e4cb7910117646d6af1c8c9d"
+  },
+  "nodeGroups": [
+    {
+      "id": "b21b5f62-6a60-4fda-a32f-b692309cf394",
+      "name": "Screen incoming mail",
+      "nodeIds": [
+        "8152ba6d-eab5-4fce-9d87-e5ec21a98479",
+        "c80e0a76-8326-4597-9f44-d560ac26b26c",
+        "30f0bcc8-7e3f-4f6c-af58-2eb3057f58ff",
+        "f077cd26-852d-41fa-9e9d-7b940f70949d"
+      ],
+      "description": "Drops repeats, own mail, spam, automated, OTP/bank/password/confidential and empty emails; extracts sender and body"
+    },
+    {
+      "id": "76285e62-9ad8-4bad-8cf5-ff00c70f6a89",
+      "name": "Reply to sender",
+      "nodeIds": [
+        "1b1e2864-7ab0-4ab3-b95d-bcaee45e273c",
+        "00ff12c0-f10f-4208-bb12-6756cacf9ae1",
+        "596c40a4-8bef-4217-8fa7-48ad8bfef297",
+        "9e17487a-a12c-4a56-b923-6bcf335db526",
+        "cf4ab233-c100-4cc8-83e5-b98b6b98ede5",
+        "27d76c65-1342-4079-b906-7afd8725b81d",
+        "2ae02112-e22f-4cf9-86a0-e3f15b6c20c4"
+      ],
+      "description": "AI writes a short polite reply per your preferences, sends it in the original thread, then marks the email read"
+    }
+  ],
+  "id": "G9mPf6L7GzqsYr8O",
+  "tags": []
+}
